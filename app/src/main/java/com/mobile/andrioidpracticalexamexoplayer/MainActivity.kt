@@ -1,23 +1,15 @@
 package com.mobile.andrioidpracticalexamexoplayer
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.location.Location
-import android.location.LocationManager
+import android.media.AudioManager
 import android.os.Bundle
-import android.os.Looper
-import android.provider.Settings
 import android.view.View
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.Player
@@ -25,7 +17,7 @@ import com.google.android.exoplayer2.SimpleExoPlayer
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector
 import com.google.android.exoplayer2.util.Log
 import com.google.android.exoplayer2.util.Util
-import com.google.android.gms.location.*
+import com.google.android.gms.location.FusedLocationProviderClient
 import com.mobile.andrioidpracticalexamexoplayer.databinding.ActivityMainBinding
 import java.util.*
 import kotlin.math.sqrt
@@ -55,11 +47,19 @@ class MainActivity : AppCompatActivity() {
  //   private val locationVm: LocationSharedViewModel by viewModels()
 
     private lateinit var sensorManager: SensorManager
+    private lateinit var gyroSensor: Sensor
+    private lateinit var audioManager: AudioManager
     private var acceleration = 0f
     private var currentAcceleration = 0f
     private var lastAcceleration = 0f
 
     private val PERMISSION_ID = 44
+
+    var SPEED_NORMAL = 1f
+    var SPEED_MEDIUM = 1.5f
+    var SPEED_HIGH = 2f
+
+    var stateString = ""
     private fun initializePlayer() {
         val trackSelector = DefaultTrackSelector(this).apply {
             setParameters(buildUponParameters().setMaxVideoSizeSd())
@@ -88,13 +88,14 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(viewBinding.root)
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        gyroSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
         Objects.requireNonNull(sensorManager).registerListener(sensorListener, sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SensorManager.SENSOR_DELAY_NORMAL)
         acceleration = 10f
         currentAcceleration = SensorManager.GRAVITY_EARTH
         lastAcceleration = SensorManager.GRAVITY_EARTH
         // method to get the location
 
-
+        audioManager = applicationContext.getSystemService(AUDIO_SERVICE) as AudioManager
     }
     private val sensorListener: SensorEventListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
@@ -109,6 +110,28 @@ class MainActivity : AppCompatActivity() {
                 player?.playWhenReady = false
                 player?.playbackState
             }
+
+            val stringValue: String = x.toString() +"X" + " " + y.toString()+"Y" + " " + z.toString()+"Z"
+            println("gyro sensor $stringValue")
+
+
+
+            if(player?.playWhenReady == true){
+                if(x > 3.5f) {
+                    audioManager.adjustVolume(AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
+                } else if(x < -3.5f) {
+                    audioManager.adjustVolume(AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI)
+                }
+
+                if(stateString !="ExoPlayer.STATE_BUFFERING")
+                if(z > 5.0f) {
+                     player?.currentPosition?.plus(1000)?.let { player?.seekTo(it) }
+                } else if(z < -1.5f) {
+                      player?.currentPosition?.plus(-1000)?.let { player?.seekTo(it) }
+                }
+            }
+
+
         }
         override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
     }
@@ -163,12 +186,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun playbackStateListener() = object : Player.EventListener {
         override fun onPlaybackStateChanged(playbackState: Int) {
-            val stateString: String = when (playbackState) {
-                ExoPlayer.STATE_IDLE -> "ExoPlayer.STATE_IDLE      -"
-                ExoPlayer.STATE_BUFFERING -> "ExoPlayer.STATE_BUFFERING -"
-                ExoPlayer.STATE_READY -> "ExoPlayer.STATE_READY     -"
-                ExoPlayer.STATE_ENDED -> "ExoPlayer.STATE_ENDED     -"
-                else -> "UNKNOWN_STATE             -"
+            stateString = when (playbackState) {
+                ExoPlayer.STATE_IDLE -> "ExoPlayer.STATE_IDLE"
+                ExoPlayer.STATE_BUFFERING -> "ExoPlayer.STATE_BUFFERING"
+                ExoPlayer.STATE_READY -> "ExoPlayer.STATE_READY"
+                ExoPlayer.STATE_ENDED -> "ExoPlayer.STATE_ENDED"
+                else -> "UNKNOWN_STATE"
             }
             Log.d(TAG, "changed state to $stateString")
         }
