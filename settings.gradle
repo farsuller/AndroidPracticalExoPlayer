@@ -1,0 +1,2 @@
+rootProject.name = "AndrioidPracticalExamExoPlayer"
+include ':app'
