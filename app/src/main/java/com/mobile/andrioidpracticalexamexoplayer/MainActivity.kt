@@ -1,15 +1,23 @@
 package com.mobile.andrioidpracticalexamexoplayer
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationManager
 import android.media.AudioManager
 import android.os.Bundle
+import android.os.Looper
 import android.view.View
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.Player
@@ -17,7 +25,7 @@ import com.google.android.exoplayer2.SimpleExoPlayer
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector
 import com.google.android.exoplayer2.util.Log
 import com.google.android.exoplayer2.util.Util
-import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.*
 import com.mobile.andrioidpracticalexamexoplayer.databinding.ActivityMainBinding
 import java.util.*
 import kotlin.math.sqrt
@@ -25,10 +33,9 @@ import kotlin.math.sqrt
 
 class MainActivity : AppCompatActivity() {
 
-    companion object {
-        private const val REQUEST_CHECK_SETTINGS = 1
-        private const val REQUEST_LOCATION = 0
-    }
+    lateinit var fusedLocationProviderClient: FusedLocationProviderClient
+    lateinit var locationRequest: LocationRequest
+    val PERMISSION_ID = 1010
 
     private val viewBinding by lazy(LazyThreadSafetyMode.NONE) {
         ActivityMainBinding.inflate(layoutInflater)
@@ -42,7 +49,6 @@ class MainActivity : AppCompatActivity() {
 
     private val playbackStateListener: Player.EventListener = playbackStateListener()
 
-    private var fusedLocationProviderClient: FusedLocationProviderClient? = null
 
  //   private val locationVm: LocationSharedViewModel by viewModels()
 
@@ -52,8 +58,6 @@ class MainActivity : AppCompatActivity() {
     private var acceleration = 0f
     private var currentAcceleration = 0f
     private var lastAcceleration = 0f
-
-    private val PERMISSION_ID = 44
 
     var SPEED_NORMAL = 1f
     var SPEED_MEDIUM = 1.5f
@@ -96,6 +100,10 @@ class MainActivity : AppCompatActivity() {
         // method to get the location
 
         audioManager = applicationContext.getSystemService(AUDIO_SERVICE) as AudioManager
+
+        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
+        locationRequest = LocationRequest.create()
+        getLastLocation()
     }
     private val sensorListener: SensorEventListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
@@ -126,7 +134,7 @@ class MainActivity : AppCompatActivity() {
                 if(stateString !="ExoPlayer.STATE_BUFFERING")
                 if(z > 5.0f) {
                      player?.currentPosition?.plus(1000)?.let { player?.seekTo(it) }
-                } else if(z < -1.5f) {
+                } else if(z < -0.5f) {
                       player?.currentPosition?.plus(-1000)?.let { player?.seekTo(it) }
                 }
             }
@@ -134,6 +142,109 @@ class MainActivity : AppCompatActivity() {
 
         }
         override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
+    }
+
+    fun getLastLocation(){
+        if(CheckPermission()){
+            if(isLocationEnabled()){
+                if (ActivityCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                    ) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    return
+                }
+                fusedLocationProviderClient.lastLocation.addOnCompleteListener { task->
+                    val location:Location? = task.result
+                    if(location != null){
+                        newLocationData()
+                    }
+                }
+            }else{
+                Toast.makeText(this,"Please Turn on Your device Location",Toast.LENGTH_SHORT).show()
+            }
+        }else{
+            RequestPermission()
+        }
+    }
+
+    fun newLocationData(){
+        locationRequest.priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+        locationRequest.interval = 2000
+        locationRequest.fastestInterval = 1500
+      //  locationRequest.numUpdates = 2
+        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        fusedLocationProviderClient.requestLocationUpdates(
+            locationRequest,locationCallback, Looper.getMainLooper()
+        )
+    }
+
+
+    private val locationCallback = object : LocationCallback(){
+        override fun onLocationResult(locationResult: LocationResult) {
+            var lastLocation: Location = locationResult.lastLocation
+            Log.d("Debug:","your last last location: "+ lastLocation.longitude.toString())
+            println("Your Last Location is : Long: ${lastLocation.longitude} , Lat: ${lastLocation.latitude}")
+          //  textView.text = "You Last Location is : Long: "+ lastLocation.longitude + " , Lat: " + lastLocation.latitude + "\n" + getCityName(lastLocation.latitude,lastLocation.longitude)
+        }
+    }
+
+    private fun CheckPermission():Boolean{
+        //this function will return a boolean
+        //true: if we have permission
+        //false if not
+        if(
+            ActivityCompat.checkSelfPermission(this,Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ActivityCompat.checkSelfPermission(this,Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        ){
+            return true
+        }
+
+        return false
+
+    }
+
+    fun RequestPermission(){
+        //this function will allows us to tell the user to requesut the necessary permsiion if they are not garented
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION,Manifest.permission.ACCESS_FINE_LOCATION),
+            PERMISSION_ID
+        )
+    }
+
+    fun isLocationEnabled():Boolean{
+        //this function will return to us the state of the location service
+        //if the gps or the network provider is enabled then it will return true otherwise it will return false
+        var locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+    }
+
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if(requestCode == PERMISSION_ID){
+            if(grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED){
+                Log.d("Debug:","You have the Permission")
+            }
+        }
     }
 
     public override fun onResume() {
