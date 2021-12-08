@@ -13,6 +13,7 @@ import android.location.Location
 import android.location.LocationManager
 import android.media.AudioManager
 import android.os.Bundle
+import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.widget.Toast
@@ -26,6 +27,7 @@ import com.google.android.exoplayer2.trackselection.DefaultTrackSelector
 import com.google.android.exoplayer2.util.Log
 import com.google.android.exoplayer2.util.Util
 import com.google.android.gms.location.*
+import com.google.android.gms.maps.model.LatLng
 import com.mobile.andrioidpracticalexamexoplayer.databinding.ActivityMainBinding
 import java.util.*
 import kotlin.math.sqrt
@@ -47,6 +49,8 @@ class MainActivity : AppCompatActivity() {
     private var currentWindow = 0
     private var playbackPosition = 0L
 
+    lateinit var handler : Handler
+
     private val playbackStateListener: Player.EventListener = playbackStateListener()
 
 
@@ -64,6 +68,9 @@ class MainActivity : AppCompatActivity() {
     var SPEED_HIGH = 2f
 
     var stateString = ""
+
+    var distance : Float = 0.0f
+    var userLatLng = LatLng(0.0, 0.0)
     private fun initializePlayer() {
         val trackSelector = DefaultTrackSelector(this).apply {
             setParameters(buildUponParameters().setMaxVideoSizeSd())
@@ -104,6 +111,8 @@ class MainActivity : AppCompatActivity() {
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
         locationRequest = LocationRequest.create()
         getLastLocation()
+
+        handler = Handler(Looper.getMainLooper())
     }
     private val sensorListener: SensorEventListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
@@ -160,6 +169,13 @@ class MainActivity : AppCompatActivity() {
                 fusedLocationProviderClient.lastLocation.addOnCompleteListener { task->
                     val location:Location? = task.result
                     if(location != null){
+                        handler.postDelayed(object : Runnable {
+                            override fun run() {
+                                saveOldLocation(location.latitude,location.longitude)
+                                handler.removeCallbacks(this)
+                            }
+                        }, 5000)
+
                         newLocationData()
                     }
                 }
@@ -198,6 +214,11 @@ class MainActivity : AppCompatActivity() {
             var lastLocation: Location = locationResult.lastLocation
             Log.d("Debug:","your last last location: "+ lastLocation.longitude.toString())
             println("Your Last Location is : Long: ${lastLocation.longitude} , Lat: ${lastLocation.latitude}")
+
+
+            //userLatLng = LatLng(lastLocation.latitude,lastLocation.longitude)
+
+            getDistanceMeter(LatLng(lastLocation.latitude,lastLocation.longitude))
           //  textView.text = "You Last Location is : Long: "+ lastLocation.longitude + " , Lat: " + lastLocation.latitude + "\n" + getCityName(lastLocation.latitude,lastLocation.longitude)
         }
     }
@@ -306,5 +327,35 @@ class MainActivity : AppCompatActivity() {
             }
             Log.d(TAG, "changed state to $stateString")
         }
+    }
+
+    fun getDistanceMeter(newLatLng:LatLng){
+        val sharedPreferences = this.getSharedPreferences("user_location", MODE_PRIVATE)
+
+        val locationA = Location("Old Location")
+        locationA.latitude = sharedPreferences.getString("user_latitude", "0.0")?.toDouble() ?: 0.0
+        locationA.longitude = sharedPreferences.getString("user_longitude", "0.0")?.toDouble() ?: 0.0
+
+        val locationB = Location("New Location")
+        locationB.latitude = newLatLng.latitude
+        locationB.longitude =  newLatLng.longitude
+
+        distance = (locationA.distanceTo(locationB))
+
+//        println("Your distance is old lat: ${locationA.latitude} is old long ${locationA.longitude}")
+//        println("Your distance is new lat: ${locationB.latitude} is new long ${locationB.longitude}")
+//        println("Your distance is  $distance m")
+
+        if(distance > 10f){
+            player?.seekTo(0)
+        }
+    }
+
+    private fun saveOldLocation(latitude:Double,longitude:Double) {
+        val sharedPreferences = this.getSharedPreferences("user_location", MODE_PRIVATE)
+        val editor = sharedPreferences?.edit()
+        editor?.putString("user_latitude", latitude.toString())
+        editor?.putString("user_longitude", longitude.toString())
+        editor?.apply()
     }
 }
